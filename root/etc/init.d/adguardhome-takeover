@@ -70,7 +70,9 @@ takeover() {
 		uci -q add_list adguardhome.config.redirect_zone=lan
 	uci -q commit adguardhome
 
-	# 3) 默认 yaml：不存在则使用模板（不覆盖已生成的配置）
+	# 3) 默认 yaml：确保目录存在后，不存在则使用模板（不覆盖已生成的配置）
+	#    首次开机时官方 uci-defaults 尚未创建 /etc/adguardhome，必须先 mkdir
+	mkdir -p /etc/adguardhome
 	[ -f /etc/adguardhome/adguardhome.yaml ] || \
 		cp -f /usr/share/adguardhome/adguardhome.yaml /etc/adguardhome/adguardhome.yaml
 }

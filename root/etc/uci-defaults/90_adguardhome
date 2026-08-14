@@ -10,7 +10,11 @@ EOF
 # 2) 确保运行目录存在且属主正确
 [ -d /var/lib/adguardhome ] || mkdir -p /var/lib/adguardhome
 
-# 3) 首次执行状态感知接管（幂等；此后由 adguardhome-takeover 服务在每次开机自动执行）
-[ -x /etc/init.d/adguardhome-takeover ] && /etc/init.d/adguardhome-takeover start >/dev/null 2>&1
+# 3) 启用并首次执行状态感知接管（幂等；此后由 adguardhome-takeover 服务在每次开机自动执行）
+#    显式 enable：rootfs 构建时 postinst 被 IPKG_INSTROOT 跳过，此处兜底确保自愈服务开机自启
+if [ -x /etc/init.d/adguardhome-takeover ]; then
+	/etc/init.d/adguardhome-takeover enable >/dev/null 2>&1
+	/etc/init.d/adguardhome-takeover start >/dev/null 2>&1
+fi
 
 exit 0
