@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# 首次安装初始化 + 状态感知接管（幂等，可重复执行）
+# 首次安装初始化
 # 1) 清理旧版（v1, small 系）残留的 ucitrack 条目，v2 走 procd reload trigger
 uci -q batch <<-EOF
 	delete ucitrack.AdGuardHome
@@ -10,68 +10,7 @@ EOF
 # 2) 确保运行目录存在且属主正确
 [ -d /var/lib/adguardhome ] || mkdir -p /var/lib/adguardhome
 
-# 3) 状态感知接管：官方 adguardhome 核心包静态提供 /etc/init.d/adguardhome
-#    与 /etc/config/adguardhome，本包不重复打包这两个路径（避免 apk/opkg 对
-#    同名文件 ownership 的严格检查报冲突），改为运行时按文件状态决定操作。
-
-# 3.1) init：不存在或为官方裸 init 时接管为增强版（含核心包升级还原的场景）；
-#      已是本包增强版则保留现状（含用户手工改动）
-if [ -f /etc/init.d/adguardhome ]; then
-	grep -qs sync_local_domain /etc/init.d/adguardhome || {
-		cp -f /usr/share/adguardhome/adguardhome.init /etc/init.d/adguardhome
-		chmod 755 /etc/init.d/adguardhome
-	}
-else
-	cp -f /usr/share/adguardhome/adguardhome.init /etc/init.d/adguardhome
-	chmod 755 /etc/init.d/adguardhome
-fi
-/etc/init.d/adguardhome enable >/dev/null 2>&1
-
-# 3.2) UCI 配置：不存在则自举默认，存在则仅补齐扩展 option（绝不覆盖已有值）
-set_default() {
-	uci -q get "adguardhome.config.$1" >/dev/null 2>&1 || uci -q set "adguardhome.config.$1=$2"
-}
-
-uci -q get adguardhome.config >/dev/null 2>&1 || {
-	uci -q set adguardhome.config=config
-	uci -q set adguardhome.config.enabled=0
-	uci -q set adguardhome.config.config_file=/etc/adguardhome/adguardhome.yaml
-	uci -q set adguardhome.config.work_dir=/var/lib/adguardhome
-	uci -q set adguardhome.config.user=adguardhome
-	uci -q set adguardhome.config.group=adguardhome
-	uci -q set adguardhome.config.verbose=0
-	uci -q set adguardhome.config.gc=0
-	uci -q set adguardhome.config.maxprocs=0
-	uci -q set adguardhome.config.memlimit=0
-}
-
-# 本包扩展 option（官方 conf 无这些字段，缺失时补齐）
-set_default redirect none
-set_default dns_hijack 0
-set_default sync_local_domain 1
-set_default sync_local_ptr 1
-set_default bin_path /usr/bin/AdGuardHome
-set_default http_port 3000
-set_default logfile ''
-set_default release_channel stable
-set_default web_username admin
-set_default web_password ''
-set_default backup_path /etc/adguardhome
-set_default keep_files ''
-set_default backup_files ''
-set_default crontab ''
-set_default autoupdate_freq ''
-set_default cutquerylog_freq ''
-set_default cutruntimelog_freq ''
-set_default autohost_freq ''
-set_default watch_iface ''
-set_default download_links ''
-uci -q get adguardhome.config.redirect_zone >/dev/null 2>&1 || \
-	uci -q add_list adguardhome.config.redirect_zone=lan
-uci -q commit adguardhome
-
-# 3.3) 默认 yaml：不存在则使用模板（不覆盖已生成的配置）
-[ -f /etc/adguardhome/adguardhome.yaml ] || \
-	cp -f /usr/share/adguardhome/adguardhome.yaml /etc/adguardhome/adguardhome.yaml
+# 3) 首次执行状态感知接管（幂等；此后由 adguardhome-takeover 服务在每次开机自动执行）
+[ -x /etc/init.d/adguardhome-takeover ] && /etc/init.d/adguardhome-takeover start >/dev/null 2>&1
 
 exit 0

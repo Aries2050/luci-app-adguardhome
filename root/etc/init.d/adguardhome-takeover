@@ -1,0 +1,96 @@
+#!/bin/sh /etc/rc.common
+# 状态感知接管服务：与官方 adguardhome 核心包协同（幂等，可重复执行）
+#
+# 背景：
+#   - 官方核心包静态提供 /etc/init.d/adguardhome 与 /etc/config/adguardhome，
+#     本包不重复打包这两个路径（apk/opkg 对同名文件 ownership 严格检查会报冲突）。
+#   - apk 的默认保护规则 @etc/init.d 只保护"被修改过的 symlink"，普通文件在
+#     核心包升级时会被还原为官方裸 init（opkg 无保护机制同样会还原）。
+#   - 本服务 START=15，早于官方裸 init（19）与增强 init（95）：每次开机先按
+#     文件状态接管，再由增强 init 以完整功能启动 AGH —— 核心包升级后自动恢复，
+#     无需重装本包。
+#
+# 手动执行：/etc/init.d/adguardhome-takeover start
+
+START=15
+
+takeover() {
+	# 1) init：不存在或为官方裸 init 时接管为增强版；已是增强版则保留（含用户改动）。
+	#    仅在发生接管时 enable，避免覆盖用户手动 disable 的意图。
+	if [ -f /etc/init.d/adguardhome ]; then
+		if ! grep -qs sync_local_domain /etc/init.d/adguardhome; then
+			cp -f /usr/share/adguardhome/adguardhome.init /etc/init.d/adguardhome
+			chmod 755 /etc/init.d/adguardhome
+			/etc/init.d/adguardhome enable >/dev/null 2>&1
+		fi
+	else
+		cp -f /usr/share/adguardhome/adguardhome.init /etc/init.d/adguardhome
+		chmod 755 /etc/init.d/adguardhome
+		/etc/init.d/adguardhome enable >/dev/null 2>&1
+	fi
+
+	# 2) UCI 配置：不存在则自举默认，存在则仅补齐扩展 option（绝不覆盖已有值）
+	set_default() {
+		uci -q get "adguardhome.config.$1" >/dev/null 2>&1 || uci -q set "adguardhome.config.$1=$2"
+	}
+
+	uci -q get adguardhome.config >/dev/null 2>&1 || {
+		uci -q set adguardhome.config=config
+		uci -q set adguardhome.config.enabled=0
+		uci -q set adguardhome.config.config_file=/etc/adguardhome/adguardhome.yaml
+		uci -q set adguardhome.config.work_dir=/var/lib/adguardhome
+		uci -q set adguardhome.config.user=adguardhome
+		uci -q set adguardhome.config.group=adguardhome
+		uci -q set adguardhome.config.verbose=0
+		uci -q set adguardhome.config.gc=0
+		uci -q set adguardhome.config.maxprocs=0
+		uci -q set adguardhome.config.memlimit=0
+	}
+	set_default redirect none
+	set_default dns_hijack 0
+	set_default sync_local_domain 1
+	set_default sync_local_ptr 1
+	set_default bin_path /usr/bin/AdGuardHome
+	set_default http_port 3000
+	set_default logfile ''
+	set_default release_channel stable
+	set_default web_username admin
+	set_default web_password ''
+	set_default backup_path /etc/adguardhome
+	set_default keep_files ''
+	set_default backup_files ''
+	set_default crontab ''
+	set_default autoupdate_freq ''
+	set_default cutquerylog_freq ''
+	set_default cutruntimelog_freq ''
+	set_default autohost_freq ''
+	set_default watch_iface ''
+	set_default download_links ''
+	uci -q get adguardhome.config.redirect_zone >/dev/null 2>&1 || \
+		uci -q add_list adguardhome.config.redirect_zone=lan
+	uci -q commit adguardhome
+
+	# 3) 默认 yaml：不存在则使用模板（不覆盖已生成的配置）
+	[ -f /etc/adguardhome/adguardhome.yaml ] || \
+		cp -f /usr/share/adguardhome/adguardhome.yaml /etc/adguardhome/adguardhome.yaml
+}
+
+boot() {
+	takeover
+}
+
+start() {
+	takeover
+}
+
+stop() {
+	:
+}
+
+restart() {
+	takeover
+}
+
+reload() {
+	takeover
+}

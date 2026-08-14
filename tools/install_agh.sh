@@ -31,7 +31,10 @@ mkdir -p /usr/share/adguardhome
 cp -a "$PKG/root/usr/share/adguardhome/." /usr/share/adguardhome/
 chmod 755 /usr/share/adguardhome/*.sh
 
-echo "===== uci-defaults (放置并执行状态感知接管) ====="
+echo "===== 接管服务 + uci-defaults (放置并执行状态感知接管) ====="
+cp -a "$PKG/root/etc/init.d/adguardhome-takeover" /etc/init.d/adguardhome-takeover 2>/dev/null
+chmod 755 /etc/init.d/adguardhome-takeover 2>/dev/null
+/etc/init.d/adguardhome-takeover enable >/dev/null 2>&1
 cp -a "$PKG/root/etc/uci-defaults/90_adguardhome" /etc/uci-defaults/90_adguardhome 2>/dev/null
 /bin/sh /etc/uci-defaults/90_adguardhome
 
