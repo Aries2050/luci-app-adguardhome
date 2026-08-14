@@ -13,19 +13,18 @@ LUCI_DESCRIPTION:=AdGuard Home LuCI control panel (JS frontend, fw4/fw3)
 
 PKG_CONFIG_DEPENDS:=
 
-define Package/$(PKG_NAME)/conffiles
-/etc/config/adguardhome
-endef
+# 本包不静态提供 /etc/config/adguardhome 与 /etc/adguardhome/adguardhome.yaml：
+# 前者由官方 adguardhome 核心包静态安装（apk/opkg 对同名文件 ownership 严格检查会报冲突），
+# 后者是运行时配置（升级不应覆盖用户数据）。二者（连同 /etc/init.d/adguardhome 接管）
+# 均由 postinst 调用的 90_adguardhome（uci-defaults）按文件状态接管。
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 	[ -n "$${IPKG_INSTROOT}" ] && exit 0
-	# 接管官方 adguardhome 包的 init.d：包内 init 模板位于 /usr/share/adguardhome/（
-	# 避免与 adguardhome 二进制核心包在 /etc/init.d/adguardhome 的文件冲突），
-	# 安装时复制为 /etc/init.d/adguardhome 以获得重定向/劫持能力
-	cp -f /usr/share/adguardhome/adguardhome.init /etc/init.d/adguardhome
-	chmod 755 /etc/init.d/adguardhome
-	/etc/init.d/adguardhome enable >/dev/null 2>&1
+	# 状态感知接管（幂等）：init/config/yaml 按核心包文件状态接管/补齐
+	# （本包不静态打包 /etc/init.d/adguardhome 与 /etc/config/adguardhome，
+	#  避免与官方 adguardhome 核心包在 apk/opkg 下的文件 ownership 冲突）
+	/bin/sh /etc/uci-defaults/90_adguardhome
 	rm -f /tmp/luci-indexcache
 	rm -f /tmp/luci-modulecache/* 2>/dev/null
 exit 0

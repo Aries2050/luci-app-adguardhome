@@ -71,17 +71,27 @@ AdGuard Home LuCI 控制面板（新版 JS 前端），为 ImmortalWrt / OpenWrt
 ## 服务端架构
 
 ```
-root/usr/share/adguardhome/adguardhome.init  procd 服务控制模板（重定向/劫持、计划任务、日志、本地域/PTR 同步、hosts watcher；postinst 安装时复制为 /etc/init.d/adguardhome）
-root/etc/config/adguardhome            UCI 配置（默认值）
-root/etc/uci-defaults/90_adguardhome   首次安装默认初始化
+root/usr/share/adguardhome/adguardhome.init  procd 服务控制模板（重定向/劫持、计划任务、日志、本地域/PTR 同步、hosts watcher；uci-defaults 按状态接管为 /etc/init.d/adguardhome）
+root/usr/share/adguardhome/adguardhome.yaml  默认配置模板（首次接管时复制为 /etc/adguardhome/adguardhome.yaml）
+root/etc/uci-defaults/90_adguardhome   首次初始化 + 状态感知接管（init / config / yaml，幂等）
 root/usr/libexec/rpcd/luci.adguardhome rpcd 后端（shell + jshn）
-root/usr/share/adguardhome/*.sh + adguardhome.init  addhost / hosts_watch / tailto / update_core / init 模板（postinst 复制为 /etc/init.d/adguardhome）
+root/usr/share/adguardhome/*.sh  addhost / hosts_watch / tailto / update_core
 root/usr/share/luci/menu.d/            菜单
 root/usr/share/rpcd/acl.d/             rpcd 权限
 htdocs/luci-static/resources/view/adguardhome/  overview / config / tools / manual / logs
 ```
 
 init.d 额外命令：`/etc/init.d/adguardhome isrunning`（状态）、`apply_redirect`（应用重定向/劫持）、`clear_redirect`（清除）。
+
+## 与官方核心包协同（apk/opkg 文件冲突处理）
+
+官方 `adguardhome` 核心包静态提供 `/etc/init.d/adguardhome` 与 `/etc/config/adguardhome`。本包**不重复打包**这两个路径（apk/opkg 对同名文件的 ownership 严格检查会报冲突），改为由 `90_adguardhome` 在运行时**状态感知接管**（幂等、可重复执行）：
+
+- `/etc/init.d/adguardhome`：不存在或为官方裸 init 时，接管为增强版（覆盖核心包升级还原的场景）；已是本包增强版则保留现状（含用户手工改动）
+- `/etc/config/adguardhome`：不存在则自举默认配置，存在则仅补齐本包扩展 option，绝不覆盖已有值
+- `/etc/adguardhome/adguardhome.yaml`：不存在则使用默认模板，不覆盖已生成的配置
+
+`postinst`（安装/升级本包时）与首次开机（uci-defaults）都会执行接管。核心包单独升级后若增强 init 被还原，重装本包即可恢复。
 
 ## UCI 配置要点
 
