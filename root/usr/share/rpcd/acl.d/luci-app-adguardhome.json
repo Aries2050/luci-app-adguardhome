@@ -1,0 +1,61 @@
+{
+	"luci-app-adguardhome": {
+		"description": "Grant permissions for the AdGuard Home LuCI app",
+		"read": {
+			"ubus": {
+				"luci.adguardhome": [
+					"get_config",
+					"get_status",
+					"get_statistics",
+					"set_passwd",
+					"set_enabled",
+					"clear_passwd",
+					"check_dns_hijack",
+					"get_update_status",
+					"do_update"
+				]
+			},
+			"uci": [
+				"adguardhome"
+			],
+			"file": {
+				"/etc/init.d/adguardhome": [
+					"exec"
+				],
+				"/etc/init.d/dnsmasq": [
+					"exec"
+				],
+				"/etc/init.d/firewall": [
+					"exec"
+				],
+				"/usr/share/adguardhome/update_core.sh": [
+					"exec"
+				],
+				"/etc/adguardhome/adguardhome.yaml": [
+					"read",
+					"write"
+				],
+				"/tmp/AGH_manual.yaml": [
+					"write"
+				],
+				"/usr/bin/AdGuardHome": [
+					"exec"
+				],
+				"/sbin/logread": [
+					"exec"
+				],
+				"/usr/libexec/logread-ubox": [
+					"exec"
+				],
+				"/usr/bin/tail": [
+					"exec"
+				]
+			}
+		},
+		"write": {
+			"uci": [
+				"adguardhome"
+			]
+		}
+	}
+}

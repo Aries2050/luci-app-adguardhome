@@ -1,0 +1,318 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+
+# ============================================================================
+# luci.adguardhome - rpcd 后端
+# 全新实现：修复 kiddin9 版全部 bug（curl -w 缺括号 / 路径硬编码 / 列表分组重复）
+# 读取路径统一走 UCI adguardhome.config.config_file
+# ============================================================================
+
+CONFIG_NAME=adguardhome
+UPDATE_SCRIPT=/usr/share/adguardhome/update_core.sh
+UPDATE_LOG=/tmp/AGH_update.log
+UPDATE_LOCK=/var/run/adguardhome_update
+UPDATE_POS=/var/run/adguardhome_update_pos
+
+uci_get() { uci -q get "${CONFIG_NAME}.config.$1" 2>/dev/null; }
+
+CONFIG_FILE="$(uci_get config_file)"
+[ -n "$CONFIG_FILE" ] || CONFIG_FILE=/etc/adguardhome/adguardhome.yaml
+
+# ---------------------------------------------------------------------------
+# YAML 解析（保留 jshn 思路的 parse_yaml；变量名以路径下划线拼接）
+# ---------------------------------------------------------------------------
+parse_yaml() {
+	local prefix=$2
+	local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+	sed -ne "s|,$s\]$s\$|]|" \
+		-e ":1;s|^\($s\)\($w\)$s:$s\[$s\(.*\)$s,$s\(.*\)$s\]|\1\2: [\3]\n\1  - \4|;t1" \
+		-e "s|^\($s\)\($w\)$s:$s\[$s\(.*\)$s\]|\1\2:\n\1  - \3|;p" $1 | \
+	sed -ne "s|,$s}$s\$|}|" \
+		-e ":1;s|^\($s\)-$s{$s\(.*\)$s,$s\($w\)$s:$s\(.*\)$s}|\1- {\2}\n\1  \3: \4|;t1" \
+		-e    "s|^\($s\)-$s{$s\(.*\)$s}|\1-\n\1  \2|;p" | \
+	sed -ne "s|^\($s\):|\1|" \
+		-e "s|^\($s\)-$s[\"']\(.*\)[\"']$s\$|\1$fs$fs\2|p" \
+		-e "s|^\($s\)-$s\(.*\)$s\$|\1$fs$fs\2|p" \
+		-e "s|^\($s\)\($w\)$s:$s[\"']\(.*\)[\"']$s\$|\1$fs\2$fs\3|p" \
+		-e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p" | \
+	awk -F$fs '{
+	  indent = length($1)/2;
+	  vname[indent] = $2;
+	  for (i in vname) {if (i > indent) {delete vname[i]; idx[i]=0}}
+	  if(length($2)== 0){  vname[indent]= ++idx[indent] };
+	  if (length($3) > 0) {
+		 vn=""; for (i=0; i<indent; i++) { vn=(vn)(vname[i])("_")}
+		 printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, vname[indent], $3);
+	  }
+	}'
+}
+
+read_config() {
+	[ -f "$CONFIG_FILE" ] && parse_yaml "$CONFIG_FILE"
+}
+
+# ---------------------------------------------------------------------------
+# 工具函数
+# ---------------------------------------------------------------------------
+log_error() { logger -p err "[luci.AdGuardHome]: $@"; }
+
+check_if_empty() {
+	[ -n "$2" ] && return 0
+	log_error "$1"
+	echo "{\"auth_error\":\"$1\"}"
+	exit 1
+}
+
+# 输出一个列表变量（如 dns_upstream_dns）为 JSON 数组，修复 kiddin9 分组重复 bug
+emit_list() {
+	local prefix="$1" i=1 val first=1
+	echo -n "\"$prefix\":["
+	while :; do
+		eval "val=\"\${${prefix}_${i}}\""
+		[ -n "$val" ] || break
+		[ $first -eq 1 ] || echo -n ","
+		first=0
+		echo -n "\"$val\""
+		i=$((i+1))
+	done
+	echo -n "]"
+}
+
+# JSON 字符串转义（用于 log 等自由文本）
+json_escape() {
+	sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' '
+}
+
+# ---------------------------------------------------------------------------
+# AGH REST API
+# ---------------------------------------------------------------------------
+call_rest_api() {
+	local AGH_USER AGH_PASS CODE TFILE
+	AGH_USER="$(uci_get web_username)"
+	check_if_empty "Username not found in uci adguardhome" "$AGH_USER" || exit 1
+	AGH_PASS="$(uci_get web_password)"
+	check_if_empty "Password not found in uci adguardhome" "$AGH_PASS" || exit 1
+
+	TFILE=$(mktemp)
+	# 修复：-w "%{http_code}" 补全右花括号
+	CODE=$(curl --silent -L -k -u "${AGH_USER}:${AGH_PASS}" \
+		"${PROTO}://${HOST}:${PORT}/control/$1" -o "$TFILE" -w "%{http_code}")
+	if [ "$CODE" = "200" ]; then
+		cat "$TFILE" | tr -d '\n'
+	else
+		local MSG
+		MSG="REST call failed with '$(cat "$TFILE" 2>/dev/null)'. Are the credentials correct?"
+		log_error "$MSG"
+		echo "{\"error\":\"$MSG\"}"
+	fi
+	rm -f "$TFILE"
+}
+
+# ---------------------------------------------------------------------------
+# 加载 YAML 并推导 HOST/PORT/PROTO
+# ---------------------------------------------------------------------------
+TFILE=$(mktemp)
+trap 'rm -f "$TFILE"; exit' EXIT
+read_config > "$TFILE"
+# shellcheck disable=SC1090
+. "$TFILE"
+
+HOST="${http_address%:*}"
+PORT="${http_address##*:}"
+if [ -z "$HOST" ] || [ -z "$PORT" ] || [ "$HOST" = "$http_address" ]; then
+	HOST="${bind_host:-0.0.0.0}"
+	PORT="${bind_port:-3000}"
+fi
+[ -z "$PORT" ] && PORT=3000
+
+PROTO="http"
+if [ "$tls_enabled" = "true" ]; then
+	PROTO="https"
+	[ -n "$tls_server_name" ] && HOST="$tls_server_name"
+	[ -n "$tls_port_https" ] && PORT="$tls_port_https"
+fi
+# 绑定地址为 0.0.0.0/:: 时，本地 REST 调用统一走 loopback
+# （不能替换为 hostname.lan——lan 域未必能解析，会导致 curl 失败）
+if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ] || [ -z "$HOST" ]; then
+	HOST="127.0.0.1"
+fi
+
+# ---------------------------------------------------------------------------
+# 分发
+# ---------------------------------------------------------------------------
+case "$1" in
+	list)
+		echo '{ "get_config": {}, "get_status": {}, "get_statistics": {}, "set_passwd": {"username":"string", "hash":"string", "password":"string", "sync":"int"}, "set_enabled": {"enabled":"int"}, "clear_passwd": {}, "check_dns_hijack": {}, "do_update": {"force":"int"}, "get_update_status": {} }'
+		;;
+
+	call)
+		case "$2" in
+			get_config)
+				# 输出前端需要的配置视图
+				echo -n "{"
+				emit_list dns_upstream_dns
+				echo -n ","
+				emit_list dns_bootstrap_dns
+				echo -n ","
+				# web_url 供用户在浏览器点击：用路由器 LAN IP（127.0.0.1 只适合路由器本机）
+				web_ip="$(uci get network.lan.ipaddr 2>/dev/null)"
+				web_ip="${web_ip%%/*}"   # 去掉 CIDR 掩码 /24
+				[ -n "$web_ip" ] || web_ip="127.0.0.1"
+				echo -n "\"web_url\":\"${PROTO}://${web_ip}:${PORT}\""
+				echo -n ",\"dns_port\":\"${dns_port}\""
+				echo -n ",\"statistics_interval\":\"${dns_statistics_interval}\""
+				echo -n ",\"cache_size\":\"${dns_cache_size}\""
+				echo "}"
+				;;
+
+			get_status)
+				# 本地判断服务状态（无需 AGH 密码）：进程 + 版本
+				# 基础状态显示不应依赖 REST 认证
+				bin="$(uci_get bin_path)"
+				[ -n "$bin" ] || bin="/usr/bin/AdGuardHome"
+				running="false"
+				pgrep -f "AdGuardHome" >/dev/null 2>&1 && running="true"
+				ver=""
+				if [ "$running" = "true" ] && [ -x "$bin" ]; then
+					# 版本缓存 60 秒（busybox 无 stat，用 find -mmin 判断新鲜度），避免 2s 轮询反复拉起二进制
+					cache="/tmp/agh_version.txt"
+					if [ -f "$cache" ] && [ -n "$(find "$cache" -mmin -1 2>/dev/null)" ]; then
+						ver="$(cat "$cache")"
+					fi
+					if [ -z "$ver" ]; then
+						ver="$("$bin" --version 2>/dev/null | grep -o 'v[0-9][0-9.]*' | head -1)"
+						[ -n "$ver" ] && echo "$ver" > "$cache"
+					fi
+				fi
+				echo "{\"running\":$running,\"version\":\"$ver\"}"
+				;;
+
+			get_statistics)
+				call_rest_api stats
+				;;
+
+			set_passwd)
+				input="" AGH_USER="" AGH_HASH="" AGH_PW="" SYNC="" uesc="" hesc=""
+				read input
+				json_load "$input"
+				json_get_var AGH_USER "username"
+				json_get_var AGH_HASH "hash"
+				json_get_var AGH_PW "password"
+				json_get_var SYNC "sync"
+				check_if_empty "username parameter missing." "$AGH_USER" || exit 1
+				check_if_empty "hash parameter missing." "$AGH_HASH" || exit 1
+
+				# 安全替换：awk 只替换 users 段前两个字段，避免 sed 转义问题
+				uesc="$AGH_USER"
+				hesc="$AGH_HASH"
+				awk -v u="$uesc" -v h="$hesc" '
+					BEGIN { udone=0; pdone=0 }
+					/^  - name:/ && !udone { print "  - name: " u; udone=1; next }
+					/^    password:/ && !pdone { print "    password: " h; pdone=1; next }
+					{ print }
+				' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && {
+					# root 改写后保持 AGH 用户属主，否则 AGH 无法读/重写配置
+					_au="$(uci_get user)"; [ -n "$_au" ] || _au="adguardhome"
+					_ag="$(uci_get group)"; [ -n "$_ag" ] || _ag="adguardhome"
+					chown "$_au:$_ag" "$CONFIG_FILE.tmp" 2>/dev/null
+					mv -f "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+				}
+
+				# 可选同步：仅当 sync=1 且提供明文密码时更新插件 REST 凭证
+				# （关闭同步 = 仅更改 AGH 密码，插件状态/统计可能认证失败）
+				if [ "$SYNC" = "1" ] && [ -n "$AGH_PW" ]; then
+					uci -q set "${CONFIG_NAME}.config.web_username=$AGH_USER"
+					uci -q set "${CONFIG_NAME}.config.web_password=$AGH_PW"
+					uci -q commit "$CONFIG_NAME"
+				fi
+				# 注意：不能后台化（&）——rpcd 退出会清理子进程导致 restart 被中断（同 set_enabled 经验）
+				/etc/init.d/adguardhome restart >/dev/null 2>&1
+				echo "{\"success\":true}"
+				;;
+
+			set_enabled)
+			input="" EN=""
+			read input
+			json_load "$input"
+			json_get_var EN "enabled"
+			[ -n "$EN" ] || EN="0"
+			# 注意：不能后台化（&），rpcd 退出会清理子进程导致 start/stop 不生效
+			if [ "$EN" = "1" ]; then
+				uci -q set "${CONFIG_NAME}.config.enabled=1"
+				uci -q commit "$CONFIG_NAME"
+				/etc/init.d/adguardhome enable >/dev/null 2>&1
+				/etc/init.d/adguardhome start >/dev/null 2>&1
+			else
+				uci -q set "${CONFIG_NAME}.config.enabled=0"
+				uci -q commit "$CONFIG_NAME"
+				/etc/init.d/adguardhome stop >/dev/null 2>&1
+			fi
+			echo '{"success":true}'
+			;;
+
+			clear_passwd)
+			# 清除插件保存的 REST 凭证（web_username/web_password）
+			uci -q delete "${CONFIG_NAME}.config.web_username"
+			uci -q delete "${CONFIG_NAME}.config.web_password"
+			uci -q commit "$CONFIG_NAME"
+			echo '{"success":true}'
+			;;
+
+			check_dns_hijack)
+				# 通用扫描：检测系统已存在的 dns 劫持（排除本插件 AGH- 标记规则）
+				found="" detail=""
+				if command -v fw4 >/dev/null 2>&1; then
+					found=$(nft -a list ruleset 2>/dev/null | grep -E "dport 53" \
+						| grep -E "redirect|dnat" | grep -vE "AGH[-_]")
+				elif command -v iptables >/dev/null 2>&1; then
+					found=$(iptables -t nat -S 2>/dev/null | grep -- "--dport 53" \
+						| grep -E "REDIRECT|DNAT" | grep -vE "AGH[-_]")
+				fi
+				if [ -n "$found" ]; then
+					detail="$(echo "$found" | head -1 | json_escape)"
+					echo "{\"hijack\":true,\"detail\":\"${detail}\"}"
+				else
+					echo "{\"hijack\":false}"
+				fi
+				;;
+
+			do_update)
+				input="" force=""
+				read input
+				json_load "$input"
+				json_get_var force "force"
+				if [ -f "$UPDATE_LOCK" ] && [ "$force" != "1" ]; then
+					echo "{\"error\":\"already_running\"}"
+					exit 0
+				fi
+				if [ "$force" = "1" ]; then
+					pkill -f "$UPDATE_SCRIPT" 2>/dev/null
+					rm -f "$UPDATE_LOCK"
+				fi
+				: > "$UPDATE_LOG"
+				: > "$UPDATE_POS"   # 重置增量读取位置，避免新日志被跳过
+				# setsid 脱离 rpcd 进程组，否则 rpcd 退出会清理 update_core.sh
+				setsid "$UPDATE_SCRIPT" > "$UPDATE_LOG" 2>&1 &
+				echo "{\"started\":true}"
+				;;
+
+			get_update_status)
+				pos="" total="" running="" content=""
+				pos="$(cat "$UPDATE_POS" 2>/dev/null)"
+				[ -n "$pos" ] || pos=0
+				running=0
+				[ -f "$UPDATE_LOCK" ] && running=1
+				if [ -f "$UPDATE_LOG" ]; then
+					total="$(wc -c < "$UPDATE_LOG")"
+					content="$(dd if="$UPDATE_LOG" bs=1 skip="$pos" 2>/dev/null | json_escape)"
+				else
+					total=0
+					content=""
+				fi
+				[ -n "$total" ] || total=0
+				echo "$total" > "$UPDATE_POS"
+				echo "{\"running\":$running,\"log\":\"$content\",\"pos\":$total}"
+				;;
+		esac
+		;;
+esac

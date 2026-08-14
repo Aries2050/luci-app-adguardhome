@@ -1,0 +1,477 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: luci-app-adguardhome\n"
+"Last-Translator: Aoi\n"
+"Language-Team: none\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "AdGuard Home"
+msgstr "AdGuard Home"
+
+msgid "Overview"
+msgstr "概览"
+
+msgid "Configuration"
+msgstr "配置"
+
+msgid "Tools"
+msgstr "运维"
+
+msgid "Manual Config"
+msgstr "手动配置"
+
+msgid "Logs"
+msgstr "日志"
+
+msgid "AdGuard Home Configuration"
+msgstr "AdGuard Home 配置"
+
+msgid "AdGuard Home Tools"
+msgstr "AdGuard Home 运维"
+
+msgid "General settings"
+msgstr "基本设置"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Redirect mode"
+msgstr "重定向模式"
+
+msgid "How DNS traffic is handled by AdGuard Home."
+msgstr "AdGuard Home 对 DNS 流量的处理方式。"
+
+msgid "Not enabled"
+msgstr "不启用"
+
+msgid "Run as dnsmasq upstream server"
+msgstr "作为 dnsmasq 上游服务器"
+
+msgid "Redirect 53 port to AdGuardHome"
+msgstr "53 端口劫持到 AdGuardHome"
+
+msgid "Use port 53 replace dnsmasq"
+msgstr "使用 53 端口替代 dnsmasq"
+
+msgid "dnsmasq upstream"
+msgstr "dnsmasq 上游"
+
+msgid "53 port redirect"
+msgstr "53 端口劫持"
+
+msgid "Replace dnsmasq"
+msgstr "替代 dnsmasq"
+
+msgid "DNS hijack"
+msgstr "DNS 劫持"
+
+msgid "Sync local domain with dnsmasq"
+msgstr "与 dnsmasq 同步本地域"
+
+msgid "When enabled, AdGuard Home's local_domain_name is kept in sync with the dnsmasq domain (%s) at service start, so LAN device IPv6 reverse lookups (PTR) resolve correctly."
+msgstr "启用时，服务启动会将 AdGuard Home 的本地域名（local_domain_name）与 dnsmasq 的域名（%s）保持一致，确保局域网设备名的 IPv6 反查（PTR）正确解析。"
+
+msgid "Private PTR upstream to dnsmasq"
+msgstr "私人 PTR 反查上游指向 dnsmasq"
+
+msgid "When enabled, AdGuard Home's private reverse DNS servers (local_ptr_upstreams) are automatically pointed to dnsmasq at service start, so PTR lookups for private addresses (e.g. 192.168.x.x) resolve to LAN device names."
+msgstr "启用时，服务启动会自动将 AdGuard Home 的私人反向 DNS 服务器（local_ptr_upstreams）指向 dnsmasq，使私有地址（如 192.168.x.x）的 PTR 反查能解析出局域网设备名。"
+
+msgid "unset"
+msgstr "未设置"
+
+msgid "Force all LAN DNS traffic (including queries to external DNS servers) to AdGuard Home. Independent switch, can be combined with any redirect mode. When enabled, existing hijack rules from other plugins are detected and reported."
+msgstr "将 LAN 全部 DNS 流量（包括发往外部 DNS 服务器的查询）强制导向 AdGuard Home。独立开关，可与任意重定向模式叠加。启用时会检测并提示其它插件已有的劫持规则。"
+
+msgid "DNS hijack enabled (force all DNS)"
+msgstr "DNS 劫持已启用（强制全部 DNS）"
+
+msgid "DNS hijack disabled"
+msgstr "DNS 劫持未启用"
+
+msgid "Detected existing DNS hijack rules from other plugins:"
+msgstr "检测到其它插件已有的 DNS 劫持规则："
+
+msgid "Redirect zones"
+msgstr "重定向区域"
+
+msgid "Firewall zones to apply redirect/hijack. Select one or more (e.g. %s), or leave empty to apply to all internal firewall zones (wan and requests from the router itself are excluded)."
+msgstr "应用重定向/劫持的防火墙区域。选择一个或多个（如 %s），或留空默认应用到全部内部防火墙区域（wan 与路由器自身发出的请求除外）。"
+
+msgid "Update channel"
+msgstr "更新通道"
+
+msgid "Stable"
+msgstr "正式版"
+
+msgid "Beta"
+msgstr "预发布版"
+
+msgid "Update core"
+msgstr "更新核心"
+
+msgid "Check & Update"
+msgstr "检查并更新"
+
+msgid "Update already running"
+msgstr "更新任务已在运行"
+
+msgid "Paths"
+msgstr "路径"
+
+msgid "Config file"
+msgstr "配置文件"
+
+msgid "Work dir"
+msgstr "工作目录"
+
+msgid "Stores stats/rules/databases."
+msgstr "存放统计/规则/数据库。"
+
+msgid "Binary path"
+msgstr "二进制路径"
+
+msgid "Web interface port"
+msgstr "Web 界面端口"
+
+msgid "Runtime log file"
+msgstr "运行日志文件"
+
+msgid "Path where AdGuard Home writes its runtime log. It is shown on the Logs page and used by the \"Tail runtime log\" scheduled task. Leave empty to log to the system log (syslog) instead of a file."
+msgstr "AdGuard Home 运行日志写入的路径。日志页会读取并展示该文件，同时供“切割运行日志”计划任务使用。留空则写入系统日志（syslog），不生成文件。"
+
+msgid "Process"
+msgstr "进程"
+
+msgid "Service user"
+msgstr "运行用户"
+
+msgid "Service group"
+msgstr "运行用户组"
+
+msgid "GOGC"
+msgstr "GOGC"
+
+msgid "GC target percentage. 0 = unset (Go official default 100: GC runs when the heap grows by 100%)."
+msgstr "垃圾回收目标百分比。0 = 不设置（Go 官方默认 100，即堆增长 100% 时触发 GC）。"
+
+msgid "GOMAXPROCS"
+msgstr "GOMAXPROCS"
+
+msgid "0 = unset (Go official default: automatically matches CPU count / cgroup quota)."
+msgstr "0 = 不设置（Go 官方默认：自动匹配 CPU 数量 / cgroup 配额）。"
+
+msgid "Memory limit (MiB)"
+msgstr "内存上限 (MiB)"
+
+msgid "Soft memory limit for the Go runtime (GOMEMLIMIT). 0 = unset (official default: no limit). Suggested: 25%-50% of device RAM."
+msgstr "Go 运行时（GOMEMLIMIT）的软内存限制。0 = 不设置（官方默认不限制）。建议设为设备内存的 25%–50%。"
+
+msgid "Verbose log"
+msgstr "详细日志"
+
+msgid "Path must be absolute."
+msgstr "路径必须为绝对路径。"
+
+msgid "Path must not end with a slash."
+msgstr "路径不能以斜杠结尾。"
+
+msgid "Config must be stored in its own directory, not /etc."
+msgstr "配置文件必须存放在独立目录中，不能直接放 /etc。"
+
+msgid "Service"
+msgstr "服务"
+
+msgid "Start / stop the service"
+msgstr "启动 / 停止服务"
+
+msgid "Core"
+msgstr "核心"
+
+msgid "Core version"
+msgstr "核心版本"
+
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "Disabled"
+msgstr "已禁用"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Open Web Interface"
+msgstr "打开 Web 界面"
+
+msgid "Enabling AdGuard Home..."
+msgstr "正在启用 AdGuard Home..."
+
+msgid "Disabling AdGuard Home..."
+msgstr "正在禁用 AdGuard Home..."
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Collecting data..."
+msgstr "正在获取数据..."
+
+msgid "Change password"
+msgstr "修改密码"
+
+msgid "Username"
+msgstr "用户名"
+
+msgid "AdGuard Home web/REST API username."
+msgstr "AdGuard Home Web/REST API 用户名。"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "AdGuard Home password. Enter a new password and click \"Save & Apply\" to apply it to AdGuard Home and update the interface credentials."
+msgstr "AdGuard Home 密码。输入新密码后点击“保存并应用”，将应用到 AdGuard Home 并更新界面凭证。"
+
+msgid "Change Password"
+msgstr "修改密码"
+
+msgid "Change"
+msgstr "修改"
+
+msgid "bcrypt library not loaded, please reload the page."
+msgstr "bcrypt 库未加载，请刷新页面。"
+
+msgid "Password changed"
+msgstr "密码已修改"
+
+msgid "Keep files on sysupgrade"
+msgstr "刷机保留文件"
+
+msgid "Keep files"
+msgstr "保留文件"
+
+msgid "Files/dirs preserved across sysupgrade (paths are expanded at service start)."
+msgstr "升级固件 (sysupgrade) 时保留的文件/目录（路径在服务启动时展开）。"
+
+msgid "Binary"
+msgstr "核心程序"
+
+msgid "sessions.db"
+msgstr "会话数据库"
+
+msgid "stats.db"
+msgstr "统计数据库"
+
+msgid "querylog.json"
+msgstr "查询日志"
+
+msgid "filters"
+msgstr "过滤规则"
+
+msgid "Backup"
+msgstr "备份"
+
+msgid "Backup on shutdown"
+msgstr "关机时备份"
+
+msgid "Files copied to the backup path when the service stops; restored if work dir is empty."
+msgstr "服务停止时复制到备份路径的文件；工作目录为空时自动恢复。"
+
+msgid "Backup path"
+msgstr "备份路径"
+
+msgid "Scheduled tasks"
+msgstr "计划任务"
+
+msgid "Crontab"
+msgstr "计划任务"
+
+msgid "Manage crontab entries automatically."
+msgstr "自动管理 crontab 条目。"
+
+msgid "Auto update core"
+msgstr "自动更新核心"
+
+msgid "Tail querylog"
+msgstr "切割查询日志"
+
+msgid "Tail runtime log"
+msgstr "切割运行日志"
+
+msgid "Update IPv6 hosts"
+msgstr "更新 IPv6 hosts"
+
+msgid "Crontab frequency"
+msgstr "计划任务频率"
+
+msgid "Auto update core frequency"
+msgstr "自动更新核心频率"
+
+msgid "Tail querylog frequency"
+msgstr "切割查询日志频率"
+
+msgid "Tail runtime log frequency"
+msgstr "切割运行日志频率"
+
+msgid "Update IPv6 hosts frequency"
+msgstr "更新 IPv6 hosts 频率"
+
+msgid "Override the execution frequency of the auto-update task. Leave default for the built-in schedule."
+msgstr "覆盖自动更新核心任务的执行频率。留空使用内置默认。"
+
+msgid "Override the execution frequency of the querylog cut task. Leave default for the built-in schedule."
+msgstr "覆盖切割查询日志任务的执行频率。留空使用内置默认。"
+
+msgid "Override the execution frequency of the runtime log cut task. Leave default for the built-in schedule."
+msgstr "覆盖切割运行日志任务的执行频率。留空使用内置默认。"
+
+msgid "Override the execution frequency of the IPv6 hosts task. Leave default for the built-in schedule."
+msgstr "覆盖更新 IPv6 hosts 任务的执行频率。留空使用内置默认。"
+
+msgid "Hosts watch interfaces"
+msgstr "主机监听接口"
+
+msgid "Network interfaces monitored by the realtime IPv6 hosts watcher. Select one or more, or leave empty to auto-detect (network.lan.ifname, then br-lan)."
+msgstr "实时 IPv6 主机监听器监视的网络接口。选择一个或多个，或留空自动检测（network.lan.ifname，其次 br-lan）。"
+
+msgid "Default (per task)"
+msgstr "默认（按任务）"
+
+msgid "Hourly"
+msgstr "每小时"
+
+msgid "Every 6 hours"
+msgstr "每 6 小时"
+
+msgid "Daily at 03:30"
+msgstr "每天 03:30"
+
+msgid "Weekly on Sunday 03:30"
+msgstr "每周日 03:30"
+
+msgid "Every 15 minutes"
+msgstr "每 15 分钟"
+
+msgid "Download sources"
+msgstr "下载源"
+
+msgid "Download links"
+msgstr "下载链接"
+
+msgid "One URL per line, first reachable wins. Leave empty to use default sources (static.adguard.com for the selected update channel, then GitHub releases)."
+msgstr "每行一个链接，按顺序取第一个可用。留空使用默认源（按所选更新通道使用 static.adguard.com，其次 GitHub releases）。"
+
+msgid "AdGuard Home Manual Config"
+msgstr "AdGuard Home 手动配置"
+
+msgid "Validate & Save"
+msgstr "校验并保存"
+
+msgid "Saving restarts the service to apply the config; DNS is briefly interrupted."
+msgstr "保存后服务将自动重启以应用配置，会造成短暂 DNS 中断。"
+
+msgid "Configuration saved and applied."
+msgstr "配置已保存并生效。"
+
+msgid "Validation failed"
+msgstr "校验失败"
+
+msgid "AdGuard Home Logs"
+msgstr "AdGuard Home 日志"
+
+msgid "Showing last "
+msgstr "显示最近 "
+
+msgid "lines"
+msgstr "行"
+
+msgid "Unable to load log data: "
+msgstr "无法加载日志数据："
+
+msgid "Enable password-required features (statistics)"
+msgstr "启用需要密码的功能（统计）"
+
+msgid "When checked, password-required features (statistics) are enabled and the credentials are kept in sync on \"Save & Apply\". When unchecked and saved, those features are disabled and the saved credentials are cleared."
+msgstr "勾选时，需要密码的功能（统计）启用，保存并应用时会同步更新界面凭证。取消勾选并保存后，这些功能将被停用，并清除已保存的凭证。"
+
+msgid "Statistics disabled (enable in Tools)."
+msgstr "统计已停用（可在 Tools 中启用）。"
+
+msgid "Also update the credentials saved by this LuCI interface (web_password) so status and statistics keep working. When unchecked and you change the password, AdGuard Home uses the new password while this interface keeps the old credentials, so password-required features (statistics) will fail to authenticate. The saved credentials are NOT cleared — use the \"Clear saved password\" button below to remove them."
+msgstr "同时更新本 LuCI 界面保存的登录凭证（web_password），保持状态与统计正常工作。取消勾选后若修改密码，AdGuard Home 将使用新密码，而本界面仍保存旧凭证，需要密码的功能（统计）会因认证失败而不可用；已保存的密码不会被清除，如需清除请使用下方“清除已保存的密码”按钮。"
+
+msgid "Password changed and synced to LuCI interface"
+msgstr "密码已更改并同步到 LuCI 界面"
+
+msgid "Password changed (not synced to LuCI interface)"
+msgstr "密码已更改（未同步到 LuCI 界面）"
+
+msgid "Collecting statistics..."
+msgstr "正在收集统计…"
+
+msgid "Statistics require the AdGuard Home password (set in Tools → Change password)."
+msgstr "查看统计需要 AdGuard Home 密码（请在 Tools → 更改密码 中设置）。"
+
+msgid "Total queries"
+msgstr "总查询数"
+
+msgid "Blocked"
+msgstr "被拦截"
+
+msgid "Avg processing time"
+msgstr "平均处理时间"
+
+msgid "Top blocked domains"
+msgstr "被拦截域名 Top"
+
+msgid "Top clients"
+msgstr "客户端 Top"
+
+msgid "Clear saved password"
+msgstr "清除已保存的密码"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "Saved LuCI credentials cleared. Statistics will be unavailable until re-entered."
+msgstr "已清除 LuCI 界面保存的凭证。重新输入前统计功能不可用。"
+
+msgid "Enter the new password in the fields above, then click Change to apply it to AdGuard Home. Keep \"Enable password-required features\" checked so status and statistics keep working."
+msgstr "在上方输入新密码后点击“修改”，将密码应用到 AdGuard Home（写入配置并重启服务）。保持“启用需要密码的功能”勾选，可让状态与统计继续正常工作。"
+
+msgid "Start AdGuard Home and apply the redirect mode below. Disable to stop the service and restore dnsmasq to port 53."
+msgstr "启用 AdGuard Home 并应用下方重定向模式。关闭则停止服务并将 dnsmasq 恢复到 53 端口。"
+
+msgid "Release channel used when updating the core: stable or beta."
+msgstr "更新核心时使用的发布通道：稳定版或测试版。"
+
+msgid "Check for and download the AdGuard Home core. The service is stopped and restarted, causing a brief DNS interruption."
+msgstr "检查并下载 AdGuard Home 核心程序。更新会停止并重启服务，造成短暂 DNS 中断。"
+
+msgid "Path to the AdGuard Home YAML config. Must be in its own directory, not /etc."
+msgstr "AdGuard Home 配置文件（YAML）路径。必须位于独立目录，不能是 /etc。"
+
+msgid "Path to the AdGuard Home executable. Downloaded automatically if missing on start."
+msgstr "AdGuard Home 可执行文件路径。启动时缺失会自动下载。"
+
+msgid "Listening port of the AdGuard Home web UI."
+msgstr "AdGuard Home Web 管理界面的监听端口。"
+
+msgid "System user running AdGuard Home. Needs capabilities to bind low ports like 53."
+msgstr "运行 AdGuard Home 的系统用户。需具备绑定 53 等低端口的 capabilities。"
+
+msgid "System group running AdGuard Home."
+msgstr "运行 AdGuard Home 的系统用户组。"
+
+msgid "Enable more detailed service logging."
+msgstr "启用后记录更详细的服务日志。"
+
+msgid "Remove the credentials saved by this LuCI interface. Statistics on Overview will be unavailable until the password is re-entered; DNS service is not affected."
+msgstr "清空本 LuCI 界面保存的登录凭证。重新输入密码前概览页统计不可用；DNS 服务不受影响。"
+
+msgid "Directory where backup data files are copied when the service stops."
+msgstr "服务停止时备份数据文件的目标目录。"

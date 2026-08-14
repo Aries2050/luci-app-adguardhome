@@ -1,0 +1,9 @@
+# 统一 LF 行尾（避免 Windows CRLF 反复差异）
+* text=auto eol=lf
+
+# 二进制
+*.lmo binary
+*.png binary
+*.gz binary
+*.tar.gz binary
+*.db binary

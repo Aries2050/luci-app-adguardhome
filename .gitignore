@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 构建产物
+*.lmo
+
+# 系统/编辑器
+Thumbs.db
+.DS_Store

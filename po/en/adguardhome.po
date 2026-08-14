@@ -1,0 +1,477 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: luci-app-adguardhome\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "AdGuard Home"
+msgstr ""
+
+msgid "Overview"
+msgstr ""
+
+msgid "Configuration"
+msgstr ""
+
+msgid "Tools"
+msgstr ""
+
+msgid "Manual Config"
+msgstr ""
+
+msgid "Logs"
+msgstr ""
+
+msgid "AdGuard Home Configuration"
+msgstr ""
+
+msgid "AdGuard Home Tools"
+msgstr ""
+
+msgid "General settings"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Redirect mode"
+msgstr ""
+
+msgid "How DNS traffic is handled by AdGuard Home."
+msgstr ""
+
+msgid "Not enabled"
+msgstr ""
+
+msgid "Run as dnsmasq upstream server"
+msgstr ""
+
+msgid "Redirect 53 port to AdGuardHome"
+msgstr ""
+
+msgid "Use port 53 replace dnsmasq"
+msgstr ""
+
+msgid "dnsmasq upstream"
+msgstr ""
+
+msgid "53 port redirect"
+msgstr ""
+
+msgid "Replace dnsmasq"
+msgstr ""
+
+msgid "DNS hijack"
+msgstr ""
+
+msgid "Force all LAN DNS traffic (including queries to external DNS servers) to AdGuard Home. Independent switch, can be combined with any redirect mode. When enabled, existing hijack rules from other plugins are detected and reported."
+msgstr ""
+
+msgid "DNS hijack enabled (force all DNS)"
+msgstr ""
+
+msgid "DNS hijack disabled"
+msgstr ""
+
+msgid "Detected existing DNS hijack rules from other plugins:"
+msgstr ""
+
+msgid "Redirect zones"
+msgstr ""
+
+msgid "Update channel"
+msgstr ""
+
+msgid "Stable"
+msgstr ""
+
+msgid "Beta"
+msgstr ""
+
+msgid "Update core"
+msgstr ""
+
+msgid "Check & Update"
+msgstr ""
+
+msgid "Update already running"
+msgstr ""
+
+msgid "Paths"
+msgstr ""
+
+msgid "Config file"
+msgstr ""
+
+msgid "Work dir"
+msgstr ""
+
+msgid "Stores stats/rules/databases."
+msgstr ""
+
+msgid "Binary path"
+msgstr ""
+
+msgid "Web interface port"
+msgstr ""
+
+msgid "Process"
+msgstr ""
+
+msgid "Service user"
+msgstr ""
+
+msgid "Service group"
+msgstr ""
+
+msgid "GOGC"
+msgstr ""
+
+msgid "GOMAXPROCS"
+msgstr ""
+
+msgid "Memory limit (MiB)"
+msgstr ""
+
+msgid "Verbose log"
+msgstr ""
+
+msgid "Path must be absolute."
+msgstr ""
+
+msgid "Path must not end with a slash."
+msgstr ""
+
+msgid "Config must be stored in its own directory, not /etc."
+msgstr ""
+
+msgid "Service"
+msgstr ""
+
+msgid "Core"
+msgstr ""
+
+msgid "Unknown"
+msgstr ""
+
+msgid "Open Web Interface"
+msgstr ""
+
+msgid "Enabling AdGuard Home..."
+msgstr ""
+
+msgid "Disabling AdGuard Home..."
+msgstr ""
+
+msgid "RUNNING"
+msgstr ""
+
+msgid "NOT RUNNING"
+msgstr ""
+
+msgid "Collecting data..."
+msgstr ""
+
+msgid "Change password"
+msgstr ""
+
+msgid "Username"
+msgstr ""
+
+msgid "AdGuard Home web/REST API username."
+msgstr ""
+
+msgid "Password"
+msgstr ""
+
+msgid "Change Password"
+msgstr ""
+
+msgid "Change"
+msgstr ""
+
+msgid "bcrypt library not loaded, please reload the page."
+msgstr ""
+
+msgid "Password changed"
+msgstr ""
+
+msgid "Keep files on sysupgrade"
+msgstr ""
+
+msgid "Keep files"
+msgstr ""
+
+msgid "Files/dirs preserved across sysupgrade (paths are expanded at service start)."
+msgstr ""
+
+msgid "Binary"
+msgstr ""
+
+msgid "sessions.db"
+msgstr ""
+
+msgid "stats.db"
+msgstr ""
+
+msgid "querylog.json"
+msgstr ""
+
+msgid "filters"
+msgstr ""
+
+msgid "Backup"
+msgstr ""
+
+msgid "Backup on shutdown"
+msgstr ""
+
+msgid "Files copied to the backup path when the service stops; restored if work dir is empty."
+msgstr ""
+
+msgid "Backup path"
+msgstr ""
+
+msgid "Scheduled tasks"
+msgstr ""
+
+msgid "Crontab"
+msgstr ""
+
+msgid "Manage crontab entries automatically."
+msgstr ""
+
+msgid "Auto update core"
+msgstr ""
+
+msgid "Tail querylog"
+msgstr ""
+
+msgid "Tail runtime log"
+msgstr ""
+
+msgid "Update IPv6 hosts"
+msgstr ""
+
+msgid "Download sources"
+msgstr ""
+
+msgid "Download links"
+msgstr ""
+
+msgid "Validate & Save"
+msgstr ""
+
+msgid "Configuration saved and applied."
+msgstr ""
+
+msgid "Validation failed"
+msgstr ""
+
+msgid "Showing last "
+msgstr ""
+
+msgid "lines"
+msgstr ""
+
+msgid "Unable to load log data: "
+msgstr ""
+
+msgid "Sync local domain with dnsmasq"
+msgstr ""
+
+msgid "When enabled, AdGuard Home's local_domain_name is kept in sync with the dnsmasq domain (%s) at service start, so LAN device IPv6 reverse lookups (PTR) resolve correctly."
+msgstr ""
+
+msgid "Private PTR upstream to dnsmasq"
+msgstr ""
+
+msgid "When enabled, AdGuard Home's private reverse DNS servers (local_ptr_upstreams) are automatically pointed to dnsmasq at service start, so PTR lookups for private addresses (e.g. 192.168.x.x) resolve to LAN device names."
+msgstr ""
+
+msgid "unset"
+msgstr ""
+
+msgid "Firewall zones to apply redirect/hijack. Select one or more (e.g. %s), or leave empty to apply to all internal firewall zones (wan and requests from the router itself are excluded)."
+msgstr ""
+
+msgid "Runtime log file"
+msgstr ""
+
+msgid "GC target percentage. 0 = unset (Go official default 100: GC runs when the heap grows by 100%)."
+msgstr ""
+
+msgid "0 = unset (Go official default: automatically matches CPU count / cgroup quota)."
+msgstr ""
+
+msgid "Soft memory limit for the Go runtime (GOMEMLIMIT). 0 = unset (official default: no limit). Suggested: 25%-50% of device RAM."
+msgstr ""
+
+msgid "Start / stop the service"
+msgstr ""
+
+msgid "Core version"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Crontab frequency"
+msgstr ""
+
+msgid "Auto update core frequency"
+msgstr ""
+
+msgid "Tail querylog frequency"
+msgstr ""
+
+msgid "Tail runtime log frequency"
+msgstr ""
+
+msgid "Update IPv6 hosts frequency"
+msgstr ""
+
+msgid "Override the execution frequency of the auto-update task. Leave default for the built-in schedule."
+msgstr ""
+
+msgid "Override the execution frequency of the querylog cut task. Leave default for the built-in schedule."
+msgstr ""
+
+msgid "Override the execution frequency of the runtime log cut task. Leave default for the built-in schedule."
+msgstr ""
+
+msgid "Override the execution frequency of the IPv6 hosts task. Leave default for the built-in schedule."
+msgstr ""
+
+msgid "Hosts watch interfaces"
+msgstr ""
+
+msgid "Network interfaces monitored by the realtime IPv6 hosts watcher. Select one or more, or leave empty to auto-detect (network.lan.ifname, then br-lan)."
+msgstr ""
+
+msgid "Default (per task)"
+msgstr ""
+
+msgid "Hourly"
+msgstr ""
+
+msgid "Every 6 hours"
+msgstr ""
+
+msgid "Daily at 03:30"
+msgstr ""
+
+msgid "Weekly on Sunday 03:30"
+msgstr ""
+
+msgid "Every 15 minutes"
+msgstr ""
+
+msgid "One URL per line, first reachable wins. Leave empty to use default sources (static.adguard.com for the selected update channel, then GitHub releases)."
+msgstr ""
+
+msgid "AdGuard Home Manual Config"
+msgstr ""
+
+msgid "Saving restarts the service to apply the config; DNS is briefly interrupted."
+msgstr ""
+
+msgid "AdGuard Home Logs"
+msgstr ""
+
+msgid "Enable password-required features (statistics)"
+msgstr ""
+
+msgid "Statistics disabled (enable in Tools)."
+msgstr ""
+
+msgid "Password changed and synced to LuCI interface"
+msgstr ""
+
+msgid "Password changed (not synced to LuCI interface)"
+msgstr ""
+
+msgid "Collecting statistics..."
+msgstr ""
+
+msgid "Statistics require the AdGuard Home password (set in Tools → Change password)."
+msgstr ""
+
+msgid "Total queries"
+msgstr ""
+
+msgid "Blocked"
+msgstr ""
+
+msgid "Avg processing time"
+msgstr ""
+
+msgid "Top blocked domains"
+msgstr ""
+
+msgid "Top clients"
+msgstr ""
+
+msgid "Clear saved password"
+msgstr ""
+
+msgid "Clear"
+msgstr ""
+
+msgid "Saved LuCI credentials cleared. Statistics will be unavailable until re-entered."
+msgstr ""
+
+msgid "Start AdGuard Home and apply the redirect mode below. Disable to stop the service and restore dnsmasq to port 53."
+msgstr ""
+
+msgid "Release channel used when updating the core: stable or beta."
+msgstr ""
+
+msgid "Check for and download the AdGuard Home core. The service is stopped and restarted, causing a brief DNS interruption."
+msgstr ""
+
+msgid "Path to the AdGuard Home YAML config. Must be in its own directory, not /etc."
+msgstr ""
+
+msgid "Path to the AdGuard Home executable. Downloaded automatically if missing on start."
+msgstr ""
+
+msgid "Listening port of the AdGuard Home web UI."
+msgstr ""
+
+msgid "System user running AdGuard Home. Needs capabilities to bind low ports like 53."
+msgstr ""
+
+msgid "System group running AdGuard Home."
+msgstr ""
+
+msgid "Enable more detailed service logging."
+msgstr ""
+
+msgid "Remove the credentials saved by this LuCI interface. Statistics on Overview will be unavailable until the password is re-entered; DNS service is not affected."
+msgstr ""
+
+msgid "Directory where backup data files are copied when the service stops."
+msgstr ""
+
+msgid "Path where AdGuard Home writes its runtime log. It is shown on the Logs page and used by the \"Tail runtime log\" scheduled task. Leave empty to log to the system log (syslog) instead of a file."
+msgstr ""
+
+msgid "AdGuard Home password. Enter a new password and click \"Save & Apply\" to apply it to AdGuard Home and update the interface credentials."
+msgstr ""
+
+msgid "When checked, password-required features (statistics) are enabled and the credentials are kept in sync on \"Save & Apply\". When unchecked and saved, those features are disabled and the saved credentials are cleared."
+msgstr ""
+
+msgid "Also update the credentials saved by this LuCI interface (web_password) so status and statistics keep working. When unchecked and you change the password, AdGuard Home uses the new password while this interface keeps the old credentials, so password-required features (statistics) will fail to authenticate. The saved credentials are NOT cleared — use the \"Clear saved password\" button below to remove them."
+msgstr ""
+
+msgid "Enter the new password in the fields above, then click Change to apply it to AdGuard Home. Keep \"Enable password-required features\" checked so status and statistics keep working."
+msgstr ""

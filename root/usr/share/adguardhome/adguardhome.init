@@ -1,0 +1,685 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+
+START=95
+STOP=01
+
+CONFIG_NAME=adguardhome
+# UCI section 名（config 文件 adguardhome 下的配置 section）
+SECTION=config
+# AGH 原始 DNS 监听端口（exchange 交换/恢复时的基准端口）
+DEFAULT_DNS_PORT=1053
+PROG=/usr/bin/AdGuardHome
+UPDATE_SCRIPT=/usr/share/adguardhome/update_core.sh
+CRON_FILE=/etc/crontabs/root
+HOSTS_WATCHER=/usr/share/adguardhome/hosts_watch.sh
+
+# 本插件防火墙标记（用于去重与劫持检测排除）
+FW_PREFIX="AGH"
+
+extra_command "isrunning" "check whether service is running"
+extra_command "apply_redirect" "apply redirect/hijack rules without restart"
+extra_command "clear_redirect" "remove all redirect/hijack rules"
+
+# ============================================================================
+# 通用工具
+# ============================================================================
+is_fw4() { command -v fw4 >/dev/null 2>&1; }
+
+# 读取 yaml 中 dns: 块下的 port（AGH DNS 监听端口）
+yaml_get_dns_port() {
+	local file="$1"
+	awk '
+	/^dns:/ { indns=1; next }
+	indns && /^[^[:space:]]/ { exit }
+	indns && /^[[:space:]]*port:/ {
+		sub(/^[[:space:]]*port:[[:space:]]*/, "");
+		gsub(/^"|"$/, "");
+		print;
+		exit
+	}' "$file" 2>/dev/null
+}
+
+# 改写 yaml 中 dns: 块下的 port
+yaml_set_dns_port() {
+	local value="$1" file="$2" u g
+	# dns: 行：设标记后必须 print; next（既保留该行，又避免本行触发下方非缩进清零）
+	awk -v v="$value" '
+	/^dns:/ { indns=1; print; next }
+	indns && /^[^[:space:]]/ { indns=0 }
+	indns && /^[[:space:]]*port:/ && !done {
+		sub(/port:.*/, "port: " v);
+		done=1
+	}
+	{ print }
+	' "$file" > "$file.tmp" 2>/dev/null && {
+		# root 改写后必须保持 AGH 用户属主，否则 AGH 无法读/重写配置
+		u="$(uci -q get adguardhome.config.user 2>/dev/null)"; [ -n "$u" ] || u="adguardhome"
+		g="$(uci -q get adguardhome.config.group 2>/dev/null)"; [ -n "$g" ] || g="adguardhome"
+		chown "$u:$g" "$file.tmp" 2>/dev/null
+		mv -f "$file.tmp" "$file"
+	}
+}
+
+# 同步 AGH local_domain_name 与 dnsmasq domain（独立开关 sync_local_domain）
+# 系统本地域不一致时（如 dnsmasq=hd 而 AGH=lan），IPv6 设备名反查（PTR）会失败
+sync_local_domain() {
+	local file="$1" domain cur u g
+	[ "$(uci -q get "${CONFIG_NAME}.config.sync_local_domain")" = "1" ] || return 0
+	domain="$(uci -q get dhcp.@dnsmasq[0].domain)"
+	[ -n "$domain" ] || return 0
+	cur="$(sed -n 's/^[[:space:]]*local_domain_name:[[:space:]]*//p' "$file" 2>/dev/null | head -1)"
+	[ "$cur" = "$domain" ] && return 0
+	# 仅改写 local_domain_name 行，保持 AGH 用户属主
+	sed "s/^[[:space:]]*local_domain_name:.*/  local_domain_name: $domain/" "$file" > "$file.tmp" 2>/dev/null && {
+		u="$(uci -q get adguardhome.config.user 2>/dev/null)"; [ -n "$u" ] || u="adguardhome"
+		g="$(uci -q get adguardhome.config.group 2>/dev/null)"; [ -n "$g" ] || g="adguardhome"
+		chown "$u:$g" "$file.tmp" 2>/dev/null
+		mv -f "$file.tmp" "$file"
+	}
+}
+
+# 自动补充 AGH 私人反向 DNS 服务器（local_ptr_upstreams）为 dnsmasq（独立开关 sync_local_ptr）
+# 私有地址（RFC1918/本地 ULA 等）的 PTR 反查会转发给 dnsmasq，才能解析出 LAN 设备名。
+# 目标端口取 dnsmasq 实际监听端口：exchange/redirect 模式=1053，dnsmasq-upstream 模式=53。
+sync_local_ptr() {
+	local file="$1" ptr_up pu u g tmp
+	[ "$(uci -q get "${CONFIG_NAME}.config.sync_local_ptr")" = "1" ] || return 0
+	pu="$(uci -q get dhcp.@dnsmasq[0].port)"
+	[ -n "$pu" ] || pu="53"
+	ptr_up="127.0.0.1:${pu}"
+	tmp="${file}.ptr"
+	# awk 状态机，仅处理 dns: 块：use_private_ptr_resolvers 强制 true；
+	# local_ptr_upstreams 列表缺 dnsmasq 时补一项（含空列表 [] 展开与块尾补齐）
+	awk -v pu="$ptr_up" '
+		/^dns:/ { indns = 1; print; next }
+		indns && /^[^[:space:]]/ {
+			if (inlist && !seen) print "    - " pu
+			indns = 0; inlist = 0; seen = 0
+			print; next
+		}
+		indns && /^[[:space:]]*use_private_ptr_resolvers:/ {
+			sub(/use_private_ptr_resolvers:.*/, "use_private_ptr_resolvers: true")
+			print; next
+		}
+		indns && /^[[:space:]]*local_ptr_upstreams:/ {
+			if ($0 ~ /\[\s*\]/) {
+				sub(/\[\s*\]/, "")
+				print
+				print "    - " pu
+				inlist = 1; seen = 1
+			} else {
+				print
+				inlist = 1; seen = 0
+			}
+			next
+		}
+		indns && inlist && /^[[:space:]]*-/ {
+			if ($0 ~ pu) seen = 1
+			print
+			next
+		}
+		indns && inlist {
+			if (!seen) print "    - " pu
+			inlist = 0; seen = 0
+			print
+			next
+		}
+		{ print }
+		END { if (inlist && !seen) print "    - " pu }
+	' "$file" > "$tmp" 2>/dev/null && {
+		u="$(uci -q get adguardhome.config.user 2>/dev/null)"; [ -n "$u" ] || u="adguardhome"
+		g="$(uci -q get adguardhome.config.group 2>/dev/null)"; [ -n "$g" ] || g="adguardhome"
+		chown "$u:$g" "$tmp" 2>/dev/null
+		mv -f "$tmp" "$file"
+	}
+}
+
+# 获取路由器 lan IP（fw3 hijack DNAT 目标兜底）
+get_router_ip() {
+	local ip
+	ip="$(uci -q get network.lan.ipaddr)"
+	ip="${ip%%/*}"   # 去 CIDR 掩码
+	[ -n "$ip" ] || ip="$(ip -4 addr show dev br-lan 2>/dev/null | awk '/inet /{print $2; exit}' | cut -d/ -f1)"
+	[ -n "$ip" ] || ip="$(ip -4 route show default 2>/dev/null | awk '{print $3; exit}')"
+	echo "$ip"
+}
+
+# 获取指定 zone 对应的路由器接口 IP（多子网 hijack 目标）
+get_zone_ip() {
+	local zone="$1" ip iface
+	ip="$(uci -q get "network.${zone}.ipaddr")"
+	ip="${ip%%/*}"   # network.*.ipaddr 是 CIDR，去掉 /24 掩码
+	if [ -z "$ip" ]; then
+		iface="$(uci -q get "network.${zone}.ifname")"
+		[ -n "$iface" ] && ip="$(ip -4 addr show dev "$iface" 2>/dev/null | awk '/inet /{print $2; exit}' | cut -d/ -f1)"
+	fi
+	echo "$ip"
+}
+
+# ============================================================================
+# dnsmasq-upstream：dnsmasq 转发到 AGH
+# ============================================================================
+set_forward_dnsmasq() {
+	local port addr
+	port="$1"
+	# 注意：busybox ash 的 local 同行赋值 a=1 b=$a 中 b 会取到空值，必须分开赋值
+	addr="127.0.0.1#$port"
+	uci -q del_list dhcp.@dnsmasq[0].server="$addr"
+	uci -q add_list dhcp.@dnsmasq[0].server="$addr"
+	uci -q delete dhcp.@dnsmasq[0].resolvfile
+	uci -q set dhcp.@dnsmasq[0].noresolv=1
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+stop_forward_dnsmasq() {
+	local port addr left
+	port="$1"
+	addr="127.0.0.1#$port"
+	uci -q del_list dhcp.@dnsmasq[0].server="$addr"
+	left="$(uci -q get dhcp.@dnsmasq[0].server)"
+	if [ -z "$left" ]; then
+		uci -q delete dhcp.@dnsmasq[0].resolvfile
+		uci -q delete dhcp.@dnsmasq[0].noresolv
+	fi
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+# ============================================================================
+# exchange：AGH 占 53，dnsmasq 让位
+# ============================================================================
+use_port53() {
+	local agh_port="$1" dnsmasq_port="$2" file="$3"
+	[ -z "$dnsmasq_port" ] && dnsmasq_port="53"
+	[ -z "$agh_port" ] && agh_port="$DEFAULT_DNS_PORT"
+
+	# 端口冲突兜底：AGH 占 53 而 dnsmasq 仍在 53 时，让 dnsmasq 让位到默认端口（1053），
+	# 与 exchange 恢复基准 old_agh_port 保持一致（此前硬编码 1745 会导致 dnsmasq 停在 1745、
+	# 本地域回传 127.0.0.1:1053 失败）
+	if [ "$dnsmasq_port" = "$agh_port" ]; then
+		[ "$dnsmasq_port" = "53" ] && agh_port="$DEFAULT_DNS_PORT"
+	elif [ "$agh_port" = "53" ]; then
+		# AGH 已占 53，无需交换
+		return 0
+	fi
+
+	# 记录 AGH 原端口，便于恢复
+	uci -q set "${CONFIG_NAME}.config.old_agh_port=$agh_port"
+	uci -q commit "$CONFIG_NAME"
+
+	yaml_set_dns_port 53 "$file"
+	uci -q set dhcp.@dnsmasq[0].port="$agh_port"
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+# 退出 exchange：恢复 dnsmasq 到 53、AGH 回到原端口
+restore_exchange() {
+	local dnsmasq_port file="$1" agh_port
+	dnsmasq_port="$(uci -q get dhcp.@dnsmasq[0].port)"
+	[ "$dnsmasq_port" = "53" ] && return 0
+
+	agh_port="$(uci -q get "${CONFIG_NAME}.config.old_agh_port")"
+	[ -n "$agh_port" ] || agh_port="$DEFAULT_DNS_PORT"
+
+	yaml_set_dns_port "$agh_port" "$file"
+	uci -q set dhcp.@dnsmasq[0].port=53
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+}
+
+# ============================================================================
+# fw4（nftables）分支：命名 section 实现幂等去重
+# ============================================================================
+fw4_apply_redirect() {
+	local dport="$1" zone="$2" sec="AGH_dns53_${zone}"
+	uci -q delete "firewall.$sec"
+	uci -q set "firewall.$sec=redirect"
+	uci -q set "firewall.$sec.name=${FW_PREFIX}-dns53-${zone}"
+	uci -q set "firewall.$sec.src=$zone"
+	uci -q set "firewall.$sec.src_dport=53"
+	uci -q set "firewall.$sec.proto=tcp udp"
+	uci -q set "firewall.$sec.target=DNAT"
+	uci -q set "firewall.$sec.dest_port=$dport"
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+}
+
+fw4_apply_hijack() {
+	local dip="$1" dport="$2" zone="$3" sec="AGH_hijack_${zone}"
+	uci -q delete "firewall.$sec"
+	uci -q set "firewall.$sec=redirect"
+	uci -q set "firewall.$sec.name=${FW_PREFIX}-hijack-${zone}"
+	uci -q set "firewall.$sec.src=$zone"
+	uci -q set "firewall.$sec.src_dport=53"
+	uci -q set "firewall.$sec.proto=tcp udp"
+	uci -q set "firewall.$sec.target=DNAT"
+	uci -q set "firewall.$sec.dest_ip=$dip"
+	uci -q set "firewall.$sec.dest_port=$dport"
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+}
+
+# 删除本插件全部 fw4 规则（按 AGH_ 前缀，兼容多 zone 命名）
+fw4_clear_all() {
+	local tmp cfg
+	tmp="$(mktemp)"
+	uci -q show firewall | grep -E "^firewall\.(AGH_[A-Za-z0-9_]+)=" | cut -d= -f1 > "$tmp"
+	while IFS= read -r cfg; do
+		[ -n "$cfg" ] && uci -q delete "$cfg"
+	done < "$tmp"
+	rm -f "$tmp"
+	uci -q commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+}
+
+# ============================================================================
+# fw3（iptables）分支：自定义链标记
+# ============================================================================
+fw3_ensure_chain() {
+	local chain="$1"
+	iptables -t nat -N "$chain" 2>/dev/null
+	iptables -t nat -F "$chain" 2>/dev/null
+}
+
+fw3_apply_redirect() {
+	local dport="$1"
+	fw3_ensure_chain ADGUARDHOME
+	iptables -t nat -D PREROUTING -j ADGUARDHOME 2>/dev/null
+	iptables -t nat -I PREROUTING -j ADGUARDHOME 2>/dev/null
+	iptables -t nat -A ADGUARDHOME -p udp --dport 53 -j REDIRECT --to-ports "$dport" 2>/dev/null
+	iptables -t nat -A ADGUARDHOME -p tcp --dport 53 -j REDIRECT --to-ports "$dport" 2>/dev/null
+}
+
+fw3_apply_hijack() {
+	local dip="$1" dport="$2"
+	fw3_ensure_chain ADGUARDHOME_HIJACK
+	iptables -t nat -D PREROUTING -j ADGUARDHOME_HIJACK 2>/dev/null
+	iptables -t nat -I PREROUTING -j ADGUARDHOME_HIJACK 2>/dev/null
+	iptables -t nat -A ADGUARDHOME_HIJACK -p udp --dport 53 -j DNAT --to-destination "${dip}:${dport}" 2>/dev/null
+	iptables -t nat -A ADGUARDHOME_HIJACK -p tcp --dport 53 -j DNAT --to-destination "${dip}:${dport}" 2>/dev/null
+}
+
+fw3_clear_all() {
+	iptables -t nat -D PREROUTING -j ADGUARDHOME 2>/dev/null
+	iptables -t nat -D PREROUTING -j ADGUARDHOME_HIJACK 2>/dev/null
+	iptables -t nat -F ADGUARDHOME 2>/dev/null
+	iptables -t nat -F ADGUARDHOME_HIJACK 2>/dev/null
+	iptables -t nat -X ADGUARDHOME 2>/dev/null
+	iptables -t nat -X ADGUARDHOME_HIJACK 2>/dev/null
+}
+
+# ============================================================================
+# 重定向 / 劫持总入口
+# ============================================================================
+apply_redirect() {
+	config_load "$CONFIG_NAME"
+	local redirect dns_hijack config_file zones zone agh_port rip zip
+	config_get redirect "$SECTION" redirect "none"
+	config_get_bool dns_hijack "$SECTION" dns_hijack 0
+	config_get config_file "$SECTION" config_file "/etc/adguardhome/adguardhome.yaml"
+
+	# 目标 zone 列表（list redirect_zone，可多行；兼容旧 option 单值）
+	zones="$(uci -q get "${CONFIG_NAME}.config.redirect_zone")"
+	if [ -z "$zones" ]; then
+		# 为空时默认全部 zone（fw4 DNAT 位于 PREROUTING 链，本机发出的请求不经过，天然排除本机自身）
+		zones=""
+		for zsec in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^=]*\)=zone$/\1/p'); do
+			# 匿名 zone（@zone[N]）改用其 name 属性（如 lan），fw4 的 src 接受 zone name
+			zname="$(uci -q get "firewall.${zsec}.name" 2>/dev/null)"
+			[ -n "$zname" ] && zsec="$zname"
+			# 排除 wan（外部接口）：避免 wan input 若被开放时把 AGH DNS 暴露到公网
+			[ "$zsec" = "wan" ] && continue
+			zones="$zones $zsec"
+		done
+	fi
+	[ -n "$zones" ] || zones="lan"
+
+	# 退出 exchange 状态恢复
+	restore_exchange "$config_file"
+
+	# 清空本插件旧的防火墙规则
+	if is_fw4; then
+		fw4_clear_all
+	else
+		fw3_clear_all
+	fi
+
+	# 当前模式不是 dnsmasq-upstream 时，清理可能残留的上游转发
+	if [ "$redirect" != "dnsmasq-upstream" ]; then
+		stop_forward_dnsmasq "$(yaml_get_dns_port "$config_file")"
+	fi
+
+	# 无任何劫持需求则结束
+	if [ "$redirect" = "none" ] && [ "$dns_hijack" != "1" ]; then
+		return 0
+	fi
+
+	agh_port="$(yaml_get_dns_port "$config_file")"
+	[ -n "$agh_port" ] || agh_port="$DEFAULT_DNS_PORT"
+
+	# 全局模式（不按 zone 区分）
+	case "$redirect" in
+		dnsmasq-upstream)
+			set_forward_dnsmasq "$agh_port"
+			;;
+		exchange)
+			use_port53 "$agh_port" "$(uci -q get dhcp.@dnsmasq[0].port)" "$config_file"
+			# 交换后 AGH 监听 53，hijack 目标端口随之调整
+			agh_port="53"
+			;;
+	esac
+
+	if is_fw4; then
+		# fw4：为每个 zone 生成独立规则（命名 section 带 zone 后缀）
+		for zone in $zones; do
+			[ -n "$zone" ] || continue
+			[ "$redirect" = "redirect" ] && fw4_apply_redirect "$agh_port" "$zone"
+			if [ "$dns_hijack" = "1" ]; then
+				zip="$(get_zone_ip "$zone")"
+				[ -n "$zip" ] && fw4_apply_hijack "$zip" "$agh_port" "$zone"
+			fi
+		done
+	else
+		# fw3：自定义链挂 PREROUTING，天然对所有接口生效
+		[ "$redirect" = "redirect" ] && fw3_apply_redirect "$agh_port"
+		if [ "$dns_hijack" = "1" ]; then
+			rip="$(get_router_ip)"
+			[ -n "$rip" ] && fw3_apply_hijack "$rip" "$agh_port"
+		fi
+	fi
+}
+
+clear_redirect() {
+	config_load "$CONFIG_NAME"
+	local config_file
+	config_get config_file "$SECTION" config_file "/etc/adguardhome/adguardhome.yaml"
+
+	restore_exchange "$config_file"
+	if is_fw4; then
+		fw4_clear_all
+	else
+		fw3_clear_all
+	fi
+	stop_forward_dnsmasq "$(yaml_get_dns_port "$config_file")"
+}
+
+# ============================================================================
+# sysupgrade keep 文件（变量展开，修复 small 版 upprotect bug）
+# ============================================================================
+write_keep_files() {
+	local keep item
+	config_get keep "$SECTION" keep_files ""
+	[ -n "$keep" ] || return 0
+
+	: > /lib/upgrade/keep.d/luci-app-adguardhome
+	for item in $keep; do
+		# 展开 $bin_path / $config_file / $work_dir 前缀
+		case "$item" in
+			'$bin_path'*) item="${item//\$bin_path/$bin_path}" ;;
+			'$config_file'*) item="${item//\$config_file/$config_file}" ;;
+			'$work_dir'*) item="${item//\$work_dir/$work_dir}" ;;
+			'$backup_path'*) item="${item//\$backup_path/$backup_path}" ;;
+		esac
+		echo "$item" >> /lib/upgrade/keep.d/luci-app-adguardhome
+	done
+}
+
+# ============================================================================
+# 备份 / 恢复（关机备份 workdir 数据）
+# ============================================================================
+do_backup() {
+	local backup_files backup_path work_dir f
+	config_get backup_files "$SECTION" backup_files ""
+	[ -n "$backup_files" ] || return 0
+	config_get backup_path "$SECTION" backup_path "/etc/adguardhome"
+	config_get work_dir "$SECTION" work_dir "/var/lib/adguardhome"
+	mkdir -p "$backup_path/data"
+	for f in $backup_files; do
+		[ -e "$work_dir/data/$f" ] || continue
+		if [ -d "$work_dir/data/$f" ]; then
+			cp -u -r -f "$work_dir/data/$f" "$backup_path/data/" 2>/dev/null
+		else
+			cp -u -f "$work_dir/data/$f" "$backup_path/data/$f" 2>/dev/null
+		fi
+	done
+}
+
+do_restore() {
+	local backup_files backup_path work_dir f
+	config_get backup_files "$SECTION" backup_files ""
+	[ -n "$backup_files" ] || return 0
+	config_get backup_path "$SECTION" backup_path "/etc/adguardhome"
+	config_get work_dir "$SECTION" work_dir "/var/lib/adguardhome"
+	[ -d "$backup_path/data" ] || return 0
+	mkdir -p "$work_dir/data"
+	for f in $backup_files; do
+		[ -e "$backup_path/data/$f" ] || continue
+		if [ -d "$backup_path/data/$f" ]; then
+			cp -u -r -f "$backup_path/data/$f" "$work_dir/data/" 2>/dev/null
+		else
+			cp -u -f "$backup_path/data/$f" "$work_dir/data/$f" 2>/dev/null
+		fi
+	done
+}
+
+# ============================================================================
+# 计划任务（crontab 管理）
+# ============================================================================
+crontab_entry() {
+	local findstr="$1" enable="$2" default="$3" line
+	line="$(grep "$findstr" "$CRON_FILE" 2>/dev/null)"
+	if [ "$enable" = "1" ]; then
+		if [ -z "$line" ]; then
+			echo "$default" >> "$CRON_FILE"
+			cron_reload=$((cron_reload + 1))
+		elif [ "$line" != "$default" ]; then
+			# 已存在但内容不同（如频率变更）→ 替换为最新条目
+			sed -i "\|$findstr|d" "$CRON_FILE"
+			echo "$default" >> "$CRON_FILE"
+			cron_reload=$((cron_reload + 1))
+		fi
+	else
+		if [ -n "$line" ]; then
+			sed -i "\|$findstr|d" "$CRON_FILE"
+			cron_reload=$((cron_reload + 1))
+		fi
+	fi
+}
+
+do_crontab() {
+	local crontab t cron_reload=0
+	local has_auto=0 has_query=0 has_run=0 has_host=0
+	local work_dir logfile
+	local auto_freq query_freq run_freq host_freq
+	config_get crontab "$SECTION" crontab ""
+	for t in $crontab; do
+		case "$t" in
+			autoupdate) has_auto=1 ;;
+			cutquerylog) has_query=1 ;;
+			cutruntimelog) has_run=1 ;;
+			autohost) has_host=1 ;;
+		esac
+	done
+	config_get work_dir "$SECTION" work_dir "/var/lib/adguardhome"
+	config_get logfile "$SECTION" logfile ""
+	# 每个任务独立执行频率（cron 5 字段时间）；留空用内置默认
+	config_get auto_freq "$SECTION" autoupdate_freq ""
+	config_get query_freq "$SECTION" cutquerylog_freq ""
+	config_get run_freq "$SECTION" cutruntimelog_freq ""
+	config_get host_freq "$SECTION" autohost_freq ""
+
+	crontab_entry "/usr/share/adguardhome/update_core.sh" "$has_auto" \
+		"${auto_freq:-30 3 * * *} /usr/share/adguardhome/update_core.sh"
+	crontab_entry "data/querylog.json" "$has_query" \
+		"${query_freq:-0 * * * *} /usr/share/adguardhome/tailto.sh 2000 \$(uci -q get adguardhome.config.work_dir)/data/querylog.json"
+	crontab_entry "adguardhome.config.logfile" "$has_run" \
+		"${run_freq:-30 3 * * *} /usr/share/adguardhome/tailto.sh 2000 \$(uci -q get adguardhome.config.logfile)"
+	crontab_entry "/usr/share/adguardhome/addhost.sh" "$has_host" \
+		"${host_freq:-0 * * * *} /usr/share/adguardhome/addhost.sh"
+
+	[ "$cron_reload" -gt 0 ] && /etc/init.d/cron restart >/dev/null 2>&1
+}
+
+# ============================================================================
+# 服务
+# ============================================================================
+isrunning() {
+	pgrep -f "${PROG}" >/dev/null 2>&1 && { echo running; return 0; }
+	echo stopped
+	return 1
+}
+
+start_service() {
+	config_load "$CONFIG_NAME"
+
+	local enabled redirect config_file work_dir user group verbose
+	local gc maxprocs memlimit http_port bin_path logfile
+	uci_validate_section "$CONFIG_NAME" "$CONFIG_NAME" config \
+		'enabled:bool:0' \
+		'redirect:string:none' \
+		'config_file:string:/etc/adguardhome/adguardhome.yaml' \
+		'work_dir:string:/var/lib/adguardhome' \
+		'bin_path:string:/usr/bin/AdGuardHome' \
+		'http_port:string:3000' \
+		'user:string:adguardhome' \
+		'group:string:adguardhome' \
+		'verbose:bool:0' \
+		'gc:uinteger:0' \
+		'maxprocs:uinteger:0' \
+		'memlimit:uinteger:0' \
+		'logfile:string:'
+
+	local config_dir
+	config_dir="$(dirname "$config_file")"
+	if [ "$config_dir" = "/etc" ]; then
+		echo "AdGuard Home config must be stored in its own directory, not /etc" >&2
+		return 1
+	fi
+	mkdir -p "$config_dir" 2>/dev/null
+	mkdir -p "$work_dir" 2>/dev/null
+	# 新目录由 root 创建，需 chown 给运行用户，否则 AGH 无法写数据/配置
+	[ -n "$user" ] || user="adguardhome"
+	[ -n "$group" ] || group="adguardhome"
+	chown "$user:$group" "$work_dir" "$config_dir" 2>/dev/null
+	# 专属日志文件：先以 root 创建并 chown，否则 adguardhome 无法在 /var/log 等目录写文件
+	if [ -n "$logfile" ] && [ "$logfile" != "syslog" ]; then
+		mkdir -p "$(dirname "$logfile")" 2>/dev/null
+		touch "$logfile" 2>/dev/null
+		chown "$user:$group" "$logfile" 2>/dev/null
+	fi
+
+	write_keep_files
+
+	# 二进制缺失 → 自动下载
+	if [ ! -x "$bin_path" ]; then
+		echo "AdGuardHome binary not found, downloading..."
+		"$UPDATE_SCRIPT" >/tmp/AGH_update.log 2>&1 &
+		return 0
+	fi
+
+	# 应用重定向 / 劫持
+	apply_redirect
+
+	if [ "$enabled" -eq 0 ]; then
+		# 未启用：清理重定向并停止
+		clear_redirect
+		return 1
+	fi
+
+	# 恢复备份数据 + 维护计划任务
+	do_restore
+	do_crontab
+	# 与 dnsmasq 同步本地域（独立开关 sync_local_domain，AGH 启动前生效）
+	sync_local_domain "$config_file"
+	# 补充私人反向 DNS 服务器指向 dnsmasq（独立开关 sync_local_ptr，AGH 启动前生效）
+	sync_local_ptr "$config_file"
+
+	procd_open_instance
+
+	procd_set_param command "$bin_path"
+	procd_append_param command --config "$config_file"
+	procd_append_param command --work-dir "$work_dir"
+	procd_append_param command --no-check-update
+	# 专属运行日志文件（留空=stdout→syslog；syslog=显式写系统日志）
+	[ -n "$logfile" ] && procd_append_param command -l "$logfile"
+	[ "$verbose" = "1" ] && procd_append_param command --verbose
+
+	[ "$gc" -gt 0 ] && procd_append_param env GOGC="$gc"
+	[ "$maxprocs" -gt 0 ] && procd_append_param env GOMAXPROCS="$maxprocs"
+	[ "$memlimit" -gt 0 ] && procd_append_param env GOMEMLIMIT="${memlimit}MiB"
+
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	[ -n "$user" ] && procd_set_param user "$user"
+	[ -n "$group" ] && procd_set_param group "$group"
+	# 绑定低端口(<1024)需要 CAP_NET_BIND_SERVICE（官方包提供 capabilities 文件）
+	if [ -f /etc/capabilities/adguardhome.json ]; then
+		procd_set_param capabilities '/etc/capabilities/adguardhome.json'
+		procd_set_param no_new_privs 1
+	fi
+	procd_set_param respawn 3600 5 5
+	procd_set_param limits nofile="65535 65535"
+
+	# jail：日志到 syslog 需要 log + procfs
+	procd_add_jail adguardhome log procfs
+	procd_add_jail_mount_rw "$config_dir"
+	procd_add_jail_mount_rw "$work_dir"
+	# AGH 写专属日志文件（-l）时，jail 需可写目标目录（syslog 模式无需挂载）
+	if [ -n "$logfile" ] && [ "$logfile" != "syslog" ]; then
+		procd_add_jail_mount_rw "$(dirname "$logfile")"
+	fi
+	procd_add_jail_mount "/etc/hosts"
+	procd_add_jail_mount "/etc/ssl/certs"
+
+	procd_close_instance
+
+	# autohost 实时 watcher：autohost 启用时用 ip monitor neigh 即时同步（参考现有 adh_hosts_watch）
+	start_hosts_watch
+}
+
+# autohost 计划任务启用时，启动 IPv6 邻居表实时监听（设备接入/下线即更新 /etc/hosts）
+start_hosts_watch() {
+	local crontab watch_iface
+	config_get crontab "$SECTION" crontab ""
+	config_get watch_iface "$SECTION" watch_iface ""
+	case " $crontab " in
+		*" autohost "*)
+			procd_open_instance hosts_watch
+			procd_set_param command /bin/sh "$HOSTS_WATCHER"
+			# 显式指定监听接口（UCI watch_iface）；留空则由脚本自动检测
+			[ -n "$watch_iface" ] && procd_set_param env AGH_WATCH_IFACE="$watch_iface"
+			procd_set_param respawn 3600 5 5
+			procd_close_instance
+			;;
+	esac
+}
+
+stop_service() {
+	config_load "$CONFIG_NAME"
+	clear_redirect
+	do_backup
+	do_crontab
+	# 停止 autohost 实时 watcher（含管道子进程；busybox 无 pkill，用 pgrep+kill；
+	# 精确路径匹配避免误杀 /usr/sbin/sync_adh_hosts_watch.sh）
+	kill $(pgrep -f "/usr/share/adguardhome/hosts_watch.sh") 2>/dev/null
+}
+
+reload_service() {
+	restart
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG_NAME"
+	config_load "$CONFIG_NAME"
+	local redirect dns_hijack
+	config_get redirect "$SECTION" redirect "none"
+	config_get_bool dns_hijack "$SECTION" dns_hijack 0
+	if [ "$redirect" != "none" ] || [ "$dns_hijack" = "1" ]; then
+		procd_add_reload_trigger firewall
+		procd_add_reload_trigger dhcp
+	fi
+}

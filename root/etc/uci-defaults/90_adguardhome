@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# 首次安装初始化
+# 1) 清理旧版（v1, small 系）残留的 ucitrack 条目，v2 走 procd reload trigger
+uci -q batch <<-EOF
+	delete ucitrack.AdGuardHome
+	commit ucitrack
+EOF
+
+# 2) 确保运行目录存在且属主正确
+[ -d /var/lib/adguardhome ] || mkdir -p /var/lib/adguardhome
+
+exit 0

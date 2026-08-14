@@ -1,0 +1,56 @@
+{
+	"admin/services/adguardhome": {
+		"title": "AdGuard Home",
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [
+				"luci-app-adguardhome"
+			],
+			"uci": {
+				"adguardhome": true
+			}
+		}
+	},
+	"admin/services/adguardhome/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "adguardhome/overview"
+		}
+	},
+	"admin/services/adguardhome/config": {
+		"title": "Configuration",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "adguardhome/config"
+		}
+	},
+	"admin/services/adguardhome/tools": {
+		"title": "Tools",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "adguardhome/tools"
+		}
+	},
+	"admin/services/adguardhome/manual": {
+		"title": "Manual Config",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "adguardhome/manual"
+		}
+	},
+	"admin/services/adguardhome/logs": {
+		"title": "Logs",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "adguardhome/logs"
+		}
+	}
+}
