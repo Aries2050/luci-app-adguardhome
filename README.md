@@ -71,10 +71,11 @@ AdGuard Home LuCI 控制面板（新版 JS 前端），为 ImmortalWrt / OpenWrt
 ## 服务端架构
 
 ```
-root/usr/share/adguardhome/adguardhome.init  procd 服务控制模板（重定向/劫持、计划任务、日志、本地域/PTR 同步、hosts watcher；接管服务按状态复制为 /etc/init.d/adguardhome）
-root/usr/share/adguardhome/adguardhome.yaml  默认配置模板（接管时按状态复制为 /etc/adguardhome/adguardhome.yaml）
-root/etc/init.d/adguardhome-takeover  状态感知接管服务（START=15，每次开机自动恢复增强 init / config / yaml）
-root/etc/uci-defaults/90_adguardhome   首次安装初始化（清 ucitrack、建目录、执行一次接管）
+root/usr/share/adguardhome/adguardhome.init  procd 服务控制模板（重定向/劫持、计划任务、日志、本地域/PTR 同步、hosts watcher；接管脚本按状态复制为 /etc/init.d/adguardhome）
+root/usr/share/adguardhome/adguardhome.yaml  默认配置模板（接管脚本按状态复制为 /etc/adguardhome/adguardhome.yaml）
+root/usr/share/adguardhome/takeover.sh  状态感知接管脚本（init / config / yaml，幂等；可手动执行）
+root/etc/init.d/adguardhome-takeover  接管触发器（START=15，每次开机调用 takeover.sh，自动恢复）
+root/etc/uci-defaults/90_adguardhome   首次安装初始化（清 ucitrack、建目录、启用并执行一次接管）
 root/usr/libexec/rpcd/luci.adguardhome rpcd 后端（shell + jshn）
 root/usr/share/adguardhome/*.sh  addhost / hosts_watch / tailto / update_core
 root/usr/share/luci/menu.d/            菜单
@@ -86,13 +87,13 @@ init.d 额外命令：`/etc/init.d/adguardhome isrunning`（状态）、`apply_r
 
 ## 与官方核心包协同（apk/opkg 文件冲突处理）
 
-官方 `adguardhome` 核心包静态提供 `/etc/init.d/adguardhome` 与 `/etc/config/adguardhome`。本包**不重复打包**这两个路径（apk/opkg 对同名文件的 ownership 严格检查会报冲突），改为由 **`adguardhome-takeover` 服务**在运行时**状态感知接管**（幂等、可重复执行）：
+官方 `adguardhome` 核心包静态提供 `/etc/init.d/adguardhome` 与 `/etc/config/adguardhome`。本包**不重复打包**这两个路径（apk/opkg 对同名文件的 ownership 严格检查会报冲突），改为由 **`adguardhome-takeover` 服务**（触发器）调用 **`/usr/share/adguardhome/takeover.sh`**（逻辑）在运行时**状态感知接管**（幂等、可重复执行）：
 
 - `/etc/init.d/adguardhome`：不存在或为官方裸 init 时，接管为增强版；已是本包增强版则保留现状（含用户手工改动）
 - `/etc/config/adguardhome`：不存在则自举默认配置，存在则仅补齐本包扩展 option，绝不覆盖已有值
 - `/etc/adguardhome/adguardhome.yaml`：不存在则使用默认模板，不覆盖已生成的配置
 
-`adguardhome-takeover`（START=15）早于 AGH 服务启动，**每次开机自动执行接管**：核心包升级会把 `/etc/init.d/adguardhome` 还原为官方裸 init（apk 的 `@etc/init.d` 默认规则只保护被修改过的 symlink，普通文件不保护；opkg 无保护机制），下次开机该服务自动恢复增强 init，**无需重装本包**。`postinst`（安装/升级本包时）与首次开机（uci-defaults）同样执行接管。
+`adguardhome-takeover`（START=15）早于 AGH 服务启动，**每次开机调用 `takeover.sh` 自动执行接管**：核心包升级会把 `/etc/init.d/adguardhome` 还原为官方裸 init（apk 的 `@etc/init.d` 默认规则只保护被修改过的 symlink，普通文件不保护；opkg 无保护机制），下次开机自动恢复增强 init，**无需重装本包**。`postinst`（安装/升级本包时）与首次开机（uci-defaults）同样执行接管。
 
 ## UCI 配置要点
 
